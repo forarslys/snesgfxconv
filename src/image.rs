@@ -1,10 +1,18 @@
 use super::snes::gfx;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum BitsPerPixel {
+	Two,
+	Four,
+	Eight,
+}
+
 pub struct Image {
 	buffer: Vec<u8>,
 	plte: Vec<gfx::SNESColor>,
 	width: u32,
 	height: u32,
+	bpp: BitsPerPixel,
 }
 
 impl Image {
@@ -31,6 +39,41 @@ impl Image {
 		for i in (0..palette.len()).step_by(3) {
 			plte.push(gfx::Color(palette[i], palette[i] + 1, palette[i] + 2).into());
 		}
-		Ok(Self { buffer, plte, width: info.width, height: info.height })
+
+		let bpp = Self::analyze_bpp(&buffer, info.width as usize, info.height as usize);
+
+		Ok(Self { buffer, plte, width: info.width, height: info.height, bpp })
+	}
+
+	fn analyze_bpp(buffer: &[u8], width: usize, height: usize) -> BitsPerPixel {
+		let mut min_bpp = BitsPerPixel::Two;
+		for y in (0..height).step_by(8) {
+			for x in (0..width).step_by(8) {
+				let mut min_index = 255;
+				let mut max_index = 0;
+				for ix in 0..8 {
+					for iy in 0..8 {
+						let offset = (x + ix) + (y + iy) * width;
+						if buffer[offset] > max_index {
+							max_index = buffer[offset];
+						}
+						if buffer[offset] < min_index {
+							min_index = buffer[offset];
+						}
+					}
+				}
+				let bpp = if (max_index & !3) == (min_index & !3) {
+					BitsPerPixel::Two
+				} else if (max_index & !15) == (min_index & !15) {
+					BitsPerPixel::Four
+				} else {
+					BitsPerPixel::Eight
+				};
+				if min_bpp < bpp {
+					min_bpp = bpp;
+				}
+			}
+		}
+		min_bpp
 	}
 }
