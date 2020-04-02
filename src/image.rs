@@ -91,7 +91,6 @@ impl Image {
 			BitsPerPixel::Two => Ok(self.convert_to_2bpp()),
 			BitsPerPixel::Four => Ok(self.convert_to_4bpp()),
 			BitsPerPixel::Eight => Ok(self.convert_to_8bpp()),
-			_ => unreachable!(),
 		}
 	}
 
@@ -107,7 +106,7 @@ impl Image {
 							($bit:expr, $offset:expr) => {
 								if self.buffer[offset] & $bit != 0 {
 									r[binoffset + 2 * iy as usize + $offset] |= 0x80 >> ix;
-								}
+									}
 							};
 						}
 						write_bit!(0x01, 0x00);
@@ -131,7 +130,7 @@ impl Image {
 							($bit:expr, $offset:expr) => {
 								if self.buffer[offset] & $bit != 0 {
 									r[binoffset + 2 * iy as usize + $offset] |= 0x80 >> ix;
-								}
+									}
 							};
 						}
 						write_bit!(0x01, 0x00);
@@ -157,7 +156,7 @@ impl Image {
 							($bit:expr, $offset:expr) => {
 								if self.buffer[offset] & $bit != 0 {
 									r[binoffset + 2 * iy as usize + $offset] |= 0x80 >> ix;
-								}
+									}
 							};
 						}
 						write_bit!(0x01, 0x00);
@@ -173,5 +172,9 @@ impl Image {
 			}
 		}
 		r
+	}
+
+	pub fn get_palettes(&self) -> &Vec<gfx::SNESColor> {
+		&self.plte
 	}
 }
