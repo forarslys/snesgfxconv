@@ -77,7 +77,7 @@ impl Image {
 		min_bpp
 	}
 
-	pub fn convert_to(&self, bpp: Option<BitsPerPixel>, dedup: bool) -> Result<Vec<u8>, &'static str> {
+	pub fn convert_to(&self, bpp: Option<BitsPerPixel>, dedup: bool, export_tilemap: bool) -> Result<(Vec<u8>, Option<Result<Vec<u8>, &'static str>>), &'static str> {
 		let bpp = if let Some(bpp) = bpp {
 			if bpp < self.bpp {
 				return Err("Invalid bpp specified.");
@@ -88,9 +88,9 @@ impl Image {
 		};
 
 		match bpp {
-			BitsPerPixel::Two => Ok(self.convert_to_2bpp(dedup)),
-			BitsPerPixel::Four => Ok(self.convert_to_4bpp(dedup)),
-			BitsPerPixel::Eight => Ok(self.convert_to_8bpp(dedup)),
+			BitsPerPixel::Two => Ok(self.convert_to_2bpp(dedup, export_tilemap)),
+			BitsPerPixel::Four => Ok(self.convert_to_4bpp(dedup, export_tilemap)),
+			BitsPerPixel::Eight => Ok(self.convert_to_8bpp(dedup, export_tilemap)),
 		}
 	}
 
@@ -101,15 +101,21 @@ impl Image {
 
 macro_rules! declare_convert_to {
 	($fn:ident, $bpp:expr, $tile_size:expr) => {
-		fn $fn(&self, dedup: bool) -> Vec<u8> {
+		fn $fn(&self, dedup: bool, export_tilemap: bool) -> (Vec<u8>, Option<Result<Vec<u8>, &'static str>>) {
 			const TILE_SIZE: usize = $tile_size;
 
 			let mut r = vec![];
 			let mut map = std::collections::HashMap::new();
+			let mut tilemap = vec![];
 
 			for y in (0..self.height).step_by(8) {
 				for x in (0..self.width).step_by(8) {
 					let mut tile = vec![vec![0; TILE_SIZE]; 4];
+					let palette = match $bpp {
+						BitsPerPixel::Two => self.buffer[(x + y * self.width) as usize] >> 2,
+						BitsPerPixel::Four => self.buffer[(x + y * self.width) as usize] >> 4,
+						BitsPerPixel::Eight => 0,
+					};
 					macro_rules! encode_tile {
 						($id:expr, $yxor:expr, $xxor:expr) => {
 							for iy in 0..8 {
@@ -146,24 +152,47 @@ macro_rules! declare_convert_to {
 						encode_tile!(2, 7, 0);
 						encode_tile!(3, 7, 7);
 
-						let mut exists = None;
+						let mut exists = false;
 						for i in 0..4 {
 							if let Some(&index) = map.get(&tile[i]) {
-								exists = Some((index, i));
+								tilemap.push((index, palette, i as u8));
+								exists = true;
 								break;
 							}
 						}
-						if exists.is_none() {
+						if !exists {
 							let index = r.len() / TILE_SIZE;
 							map.insert(tile[0].clone(), index);
+							tilemap.push((index, palette, 0));
 							r.extend_from_slice(&tile[0]);
 						}
 					} else {
+						tilemap.push((r.len() / TILE_SIZE, palette, 0));
 						r.extend_from_slice(&tile[0]);
 					}
 				}
 			}
-			r
+
+			let tilemap = if export_tilemap {
+				let mut valid = true;
+				let mut r = vec![];
+				for (index, palette, flip) in tilemap {
+					if index >= 0x400 {
+						valid = false;
+						break;
+					}
+					r.push((index & 0xFF) as u8);
+					r.push((index >> 8) as u8 | palette << 2 | flip << 6);
+				}
+				if valid {
+					Some(Ok(r))
+				} else {
+					Some(Err("Invalid tilemap"))
+				}
+			} else {
+				None
+			};
+			(r, tilemap)
 		}
 	};
 }
