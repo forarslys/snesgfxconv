@@ -77,7 +77,7 @@ impl Image {
 		min_bpp
 	}
 
-	pub fn convert_to(&self, bpp: Option<BitsPerPixel>) -> Result<Vec<u8>, &'static str> {
+	pub fn convert_to(&self, bpp: Option<BitsPerPixel>, dedup: bool) -> Result<Vec<u8>, &'static str> {
 		let bpp = if let Some(bpp) = bpp {
 			if bpp < self.bpp {
 				return Err("Invalid bpp specified.");
@@ -88,86 +88,173 @@ impl Image {
 		};
 
 		match bpp {
-			BitsPerPixel::Two => Ok(self.convert_to_2bpp()),
-			BitsPerPixel::Four => Ok(self.convert_to_4bpp()),
-			BitsPerPixel::Eight => Ok(self.convert_to_8bpp()),
+			BitsPerPixel::Two => Ok(self.convert_to_2bpp(dedup)),
+			BitsPerPixel::Four => Ok(self.convert_to_4bpp(dedup)),
+			BitsPerPixel::Eight => Ok(self.convert_to_8bpp(dedup)),
 		}
 	}
 
-	fn convert_to_2bpp(&self) -> Vec<u8> {
-		let mut r = vec![0; self.width as usize * self.height as usize / 64 * 0x10];
+	fn convert_to_2bpp(&self, dedup: bool) -> Vec<u8> {
+		const TILE_SIZE: usize = 0x10;
+
+		let mut r = vec![];
+		let mut map = std::collections::HashMap::new();
+
 		for y in (0..self.height).step_by(8) {
 			for x in (0..self.width).step_by(8) {
-				let binoffset = (x / 8 + (y / 8) * (self.width / 8)) as usize * 0x10;
-				for iy in 0..8 {
-					for ix in 0..8 {
-						let offset = ((x + ix) + (y + iy) * self.width) as usize;
-						macro_rules! write_bit {
-							($bit:expr, $offset:expr) => {
-								if self.buffer[offset] & $bit != 0 {
-									r[binoffset + 2 * iy as usize + $offset] |= 0x80 >> ix;
-									}
-							};
+				let mut tile = vec![vec![0; TILE_SIZE]; 4];
+				macro_rules! encode_tile {
+					($id:expr, $yxor:expr, $xxor:expr) => {
+						for iy in 0..8 {
+							for ix in 0..8 {
+								let offset = ((x + (ix ^ $xxor)) + (y + (iy ^ $yxor)) * self.width) as usize;
+								macro_rules! write_bit {
+									($bit:expr, $offset:expr) => {
+										if self.buffer[offset] & $bit != 0 {
+											tile[$id][2 * iy as usize + $offset] |= 0x80 >> ix;
+										}
+									};
+								}
+								write_bit!(0x01, 0x00);
+								write_bit!(0x02, 0x01);
+							}
 						}
-						write_bit!(0x01, 0x00);
-						write_bit!(0x02, 0x01);
+					};
+				}
+				encode_tile!(0, 0, 0);
+				if dedup {
+					encode_tile!(1, 0, 7);
+					encode_tile!(2, 7, 0);
+					encode_tile!(3, 7, 7);
+
+					let mut exists = None;
+					for i in 0..4 {
+						if let Some(&index) = map.get(&tile[i]) {
+							exists = Some((index, i));
+							break;
+						}
 					}
+					if exists.is_none() {
+						let index = r.len() / TILE_SIZE;
+						map.insert(tile[0].clone(), index);
+						r.extend_from_slice(&tile[0]);
+					}
+				} else {
+					r.extend_from_slice(&tile[0]);
 				}
 			}
 		}
 		r
 	}
 
-	fn convert_to_4bpp(&self) -> Vec<u8> {
-		let mut r = vec![0; self.width as usize * self.height as usize / 64 * 0x20];
+	fn convert_to_4bpp(&self, dedup: bool) -> Vec<u8> {
+		const TILE_SIZE: usize = 0x20;
+
+		let mut r = vec![];
+		let mut map = std::collections::HashMap::new();
+
 		for y in (0..self.height).step_by(8) {
 			for x in (0..self.width).step_by(8) {
-				let binoffset = (x / 8 + (y / 8) * (self.width / 8)) as usize * 0x20;
-				for iy in 0..8 {
-					for ix in 0..8 {
-						let offset = ((x + ix) + (y + iy) * self.width) as usize;
-						macro_rules! write_bit {
-							($bit:expr, $offset:expr) => {
-								if self.buffer[offset] & $bit != 0 {
-									r[binoffset + 2 * iy as usize + $offset] |= 0x80 >> ix;
-									}
-							};
+				let mut tile = vec![vec![0; TILE_SIZE]; 4];
+				macro_rules! encode_tile {
+					($id:expr, $yxor:expr, $xxor:expr) => {
+						for iy in 0..8 {
+							for ix in 0..8 {
+								let offset = ((x + (ix ^ $xxor)) + (y + (iy ^ $yxor)) * self.width) as usize;
+								macro_rules! write_bit {
+									($bit:expr, $offset:expr) => {
+										if self.buffer[offset] & $bit != 0 {
+											tile[$id][2 * iy as usize + $offset] |= 0x80 >> ix;
+										}
+									};
+								}
+								write_bit!(0x01, 0x00);
+								write_bit!(0x02, 0x01);
+								write_bit!(0x04, 0x10);
+								write_bit!(0x08, 0x11);
+							}
 						}
-						write_bit!(0x01, 0x00);
-						write_bit!(0x02, 0x01);
-						write_bit!(0x04, 0x10);
-						write_bit!(0x08, 0x11);
+					};
+				}
+				encode_tile!(0, 0, 0);
+				if dedup {
+					encode_tile!(1, 0, 7);
+					encode_tile!(2, 7, 0);
+					encode_tile!(3, 7, 7);
+
+					let mut exists = None;
+					for i in 0..4 {
+						if let Some(&index) = map.get(&tile[i]) {
+							exists = Some((index, i));
+							break;
+						}
 					}
+					if exists.is_none() {
+						let index = r.len() / TILE_SIZE;
+						map.insert(tile[0].clone(), index);
+						r.extend_from_slice(&tile[0]);
+					}
+				} else {
+					r.extend_from_slice(&tile[0]);
 				}
 			}
 		}
 		r
 	}
 
-	fn convert_to_8bpp(&self) -> Vec<u8> {
-		let mut r = vec![0; self.width as usize * self.height as usize / 64 * 0x40];
+	fn convert_to_8bpp(&self, dedup: bool) -> Vec<u8> {
+		const TILE_SIZE: usize = 0x40;
+
+		let mut r = vec![];
+		let mut map = std::collections::HashMap::new();
+
 		for y in (0..self.height).step_by(8) {
 			for x in (0..self.width).step_by(8) {
-				let binoffset = (x / 8 + (y / 8) * (self.width / 8)) as usize * 0x40;
-				for iy in 0..8 {
-					for ix in 0..8 {
-						let offset = ((x + ix) + (y + iy) * self.width) as usize;
-						macro_rules! write_bit {
-							($bit:expr, $offset:expr) => {
-								if self.buffer[offset] & $bit != 0 {
-									r[binoffset + 2 * iy as usize + $offset] |= 0x80 >> ix;
-									}
-							};
+				let mut tile = vec![vec![0; TILE_SIZE]; 4];
+				macro_rules! encode_tile {
+					($id:expr, $yxor:expr, $xxor:expr) => {
+						for iy in 0..8 {
+							for ix in 0..8 {
+								let offset = ((x + (ix ^ $xxor)) + (y + (iy ^ $yxor)) * self.width) as usize;
+								macro_rules! write_bit {
+									($bit:expr, $offset:expr) => {
+										if self.buffer[offset] & $bit != 0 {
+											tile[$id][2 * iy as usize + $offset] |= 0x80 >> ix;
+										}
+									};
+								}
+								write_bit!(0x01, 0x00);
+								write_bit!(0x02, 0x01);
+								write_bit!(0x04, 0x10);
+								write_bit!(0x08, 0x11);
+								write_bit!(0x10, 0x20);
+								write_bit!(0x20, 0x21);
+								write_bit!(0x40, 0x30);
+								write_bit!(0x80, 0x31);
+							}
 						}
-						write_bit!(0x01, 0x00);
-						write_bit!(0x02, 0x01);
-						write_bit!(0x04, 0x10);
-						write_bit!(0x08, 0x11);
-						write_bit!(0x10, 0x20);
-						write_bit!(0x20, 0x21);
-						write_bit!(0x40, 0x30);
-						write_bit!(0x80, 0x31);
+					};
+				}
+				encode_tile!(0, 0, 0);
+				if dedup {
+					encode_tile!(1, 0, 7);
+					encode_tile!(2, 7, 0);
+					encode_tile!(3, 7, 7);
+
+					let mut exists = None;
+					for i in 0..4 {
+						if let Some(&index) = map.get(&tile[i]) {
+							exists = Some((index, i));
+							break;
+						}
 					}
+					if exists.is_none() {
+						let index = r.len() / TILE_SIZE;
+						map.insert(tile[0].clone(), index);
+						r.extend_from_slice(&tile[0]);
+					}
+				} else {
+					r.extend_from_slice(&tile[0]);
 				}
 			}
 		}

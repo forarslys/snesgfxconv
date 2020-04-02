@@ -9,6 +9,7 @@ fn main() {
 		.arg(clap::Arg::with_name("input").help("input PNG file").required(true))
 		.arg(clap::Arg::with_name("output").help("output binary file").long("output").short("o").takes_value(true))
 		.arg(clap::Arg::with_name("palette").help("output palette file").long("palette").short("p").takes_value(true))
+		.arg(clap::Arg::with_name("dedup").help("Removes duplicate tiles").long("dedup"))
 		.arg(clap::Arg::with_name("2bpp").help("Converts to 2bpp").long("2bpp").short("2"))
 		.arg(clap::Arg::with_name("4bpp").help("Converts to 4bpp").long("4bpp").short("4"))
 		.arg(clap::Arg::with_name("8bpp").help("Converts to 8bpp").long("8bpp").short("8"))
@@ -29,10 +30,11 @@ fn main() {
 		}
 		bpp
 	};
+	let dedup = matches.is_present("dedup");
 
 	let image = image::Image::open_png(&input).expect("Could not read a PNG file.");
 	if let Some(output) = matches.value_of("output") {
-		if let Ok(bin) = image.convert_to(bpp) {
+		if let Ok(bin) = image.convert_to(bpp, dedup) {
 			let mut file = std::fs::File::create(&output).unwrap();
 			use std::io::Write;
 			file.write_all(bin.as_slice()).unwrap();
