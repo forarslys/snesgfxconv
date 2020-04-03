@@ -37,7 +37,7 @@ impl Image {
 		let mut plte = vec![];
 		let palette = image_info.palette.as_ref().unwrap();
 		for i in (0..palette.len()).step_by(3) {
-			plte.push(gfx::Color(palette[i], palette[i] + 1, palette[i] + 2).into());
+			plte.push(gfx::Color(palette[i], palette[i + 1], palette[i + 2]).into());
 		}
 
 		let bpp = Self::analyze_bpp(&buffer, info.width as usize, info.height as usize);
