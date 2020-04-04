@@ -1,6 +1,8 @@
 pub mod image;
 pub mod snes;
 
+use std::io::Write;
+
 fn main() {
 	let matches = clap::App::new(clap::crate_name!())
 		.version(clap::crate_version!())
@@ -18,6 +20,7 @@ fn main() {
 		.get_matches();
 
 	let input = matches.value_of("input").unwrap();
+	let output = matches.value_of("output");
 	let tilemap_path = matches.value_of("tilemap");
 	let bpp = {
 		let mut bpp = None;
@@ -35,32 +38,37 @@ fn main() {
 	let dedup = matches.is_present("dedup");
 
 	let image = image::Image::open_png(&input).expect("Could not read a PNG file.");
-	if let Some(output) = matches.value_of("output") {
-		if let Ok((bin, tilemap)) = image.convert_to(bpp, dedup, tilemap_path.is_some()) {
-			let mut file = std::fs::File::create(&output).unwrap();
-			use std::io::Write;
-			file.write_all(bin.as_slice()).unwrap();
-			if let Some(tilemap) = tilemap {
-				match tilemap {
-					Ok(tilemap) => {
-						let mut file = std::fs::File::create(&tilemap_path.unwrap()).unwrap();
-						file.write_all(tilemap.as_slice()).unwrap();
-					}
-					Err(msg) => {
-						eprintln!("{}", msg);
-					}
-				}
-			}
-		}
-	}
 
 	if let Some(palette) = matches.value_of("palette") {
 		let mut file = std::fs::File::create(&palette).unwrap();
-		use std::io::Write;
 		let plte = image.get_palettes();
 		unsafe {
 			let slice = std::slice::from_raw_parts(plte.as_ptr() as *const u8, plte.len() * std::mem::size_of::<snes::gfx::SNESColor>());
 			file.write_all(&slice).unwrap();
+		}
+	}
+
+	let encoded = if output.is_some() || tilemap_path.is_some() {
+		Some(image.convert_to(bpp, dedup, tilemap_path.is_some()).expect("Failed in encoding the image."))
+	} else {
+		None
+	};
+
+	if let Some(output) = output {
+		if let Some((bin, _)) = encoded.as_ref() {
+			let mut file = std::fs::File::create(&output).unwrap();
+			file.write_all(bin.as_slice()).unwrap();
+		}
+	}
+
+	if let Some(tilemap_path) = tilemap_path {
+		match encoded.as_ref() {
+			Some((_, Some(Ok(tilemap)))) => {
+				let mut file = std::fs::File::create(&tilemap_path).unwrap();
+				file.write_all(tilemap.as_slice()).unwrap();
+			}
+			Some((_, Some(Err(msg)))) => eprintln!("{}", msg),
+			_ => (),
 		}
 	}
 }
