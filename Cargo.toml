@@ -1,6 +1,6 @@
 [package]
 name = "snesgfxconv"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["hal <forarslys@gmail.com>"]
 edition = "2018"
 
@@ -9,3 +9,5 @@ edition = "2018"
 [dependencies]
 clap = "2.33.0"
 png = "0.16.1"
+bincode = "1.3.1"
+sneslib = { git = "https://github.com/forarslys/sneslib.git", branch="main" }

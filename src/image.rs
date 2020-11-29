@@ -1,4 +1,4 @@
-use super::snes::gfx;
+use sneslib::graphics::color;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BitsPerPixel {
@@ -9,7 +9,7 @@ pub enum BitsPerPixel {
 
 pub struct Image {
 	buffer: Vec<u8>,
-	plte: Vec<gfx::SNESColor>,
+	plte: Vec<color::SNESColor>,
 	width: u32,
 	height: u32,
 	bpp: BitsPerPixel,
@@ -17,10 +17,12 @@ pub struct Image {
 
 impl Image {
 	pub fn open_png<P: AsRef<std::path::Path>>(path: P) -> Result<Self, &'static str> {
-		let file = std::fs::File::open(path).expect("Could not open a file.");
+		let file = std::fs::File::open(path).map_err(|_| "Could not open the input file.")?;
 		let mut decoder = png::Decoder::new(file);
 		decoder.set_transformations(png::Transformations::IDENTITY | png::Transformations::PACKING);
-		let (info, mut reader) = decoder.read_info().expect("Could not decode the file.");
+		let (info, mut reader) = decoder
+			.read_info()
+			.map_err(|_| "Could not decode the input file.")?;
 
 		if info.color_type != png::ColorType::Indexed {
 			return Err("Color type of the PNG file must be Indexed Color.");
@@ -37,12 +39,18 @@ impl Image {
 		let mut plte = vec![];
 		let palette = image_info.palette.as_ref().unwrap();
 		for i in (0..palette.len()).step_by(3) {
-			plte.push(gfx::Color(palette[i], palette[i + 1], palette[i + 2]).into());
+			plte.push(color::RGB(palette[i], palette[i + 1], palette[i + 2]).into());
 		}
 
 		let bpp = Self::analyze_bpp(&buffer, info.width as usize, info.height as usize);
 
-		Ok(Self { buffer, plte, width: info.width, height: info.height, bpp })
+		Ok(Self {
+			buffer,
+			plte,
+			width: info.width,
+			height: info.height,
+			bpp,
+		})
 	}
 
 	fn analyze_bpp(buffer: &[u8], width: usize, height: usize) -> BitsPerPixel {
@@ -77,7 +85,12 @@ impl Image {
 		min_bpp
 	}
 
-	pub fn convert_to(&self, bpp: Option<BitsPerPixel>, dedup: bool, export_tilemap: bool) -> Result<(Vec<u8>, Option<Result<Vec<u8>, &'static str>>), &'static str> {
+	pub fn convert_to(
+		&self,
+		bpp: Option<BitsPerPixel>,
+		dedup: bool,
+		export_tilemap: bool,
+	) -> Result<(Vec<u8>, Option<Result<Vec<u8>, &'static str>>), &'static str> {
 		let bpp = if let Some(bpp) = bpp {
 			if bpp < self.bpp {
 				return Err("Invalid bpp specified.");
@@ -94,14 +107,18 @@ impl Image {
 		}
 	}
 
-	pub fn get_palettes(&self) -> &Vec<gfx::SNESColor> {
+	pub fn get_palettes(&self) -> &Vec<color::SNESColor> {
 		&self.plte
 	}
 }
 
 macro_rules! declare_convert_to {
 	($fn:ident, $bpp:expr, $tile_size:expr) => {
-		fn $fn(&self, dedup: bool, export_tilemap: bool) -> (Vec<u8>, Option<Result<Vec<u8>, &'static str>>) {
+		fn $fn(
+			&self,
+			dedup: bool,
+			export_tilemap: bool,
+		) -> (Vec<u8>, Option<Result<Vec<u8>, &'static str>>) {
 			const TILE_SIZE: usize = $tile_size;
 
 			let mut r = vec![];
@@ -120,30 +137,31 @@ macro_rules! declare_convert_to {
 						($id:expr, $yxor:expr, $xxor:expr) => {
 							for iy in 0..8 {
 								for ix in 0..8 {
-									let offset = ((x + (ix ^ $xxor)) + (y + (iy ^ $yxor)) * self.width) as usize;
+									let offset = ((x + (ix ^ $xxor))
+										+ (y + (iy ^ $yxor)) * self.width) as usize;
 									macro_rules! write_bit {
 										($bit:expr, $offset:expr) => {
 											if self.buffer[offset] & $bit != 0 {
 												tile[$id][2 * iy as usize + $offset] |= 0x80 >> ix;
-											}
+												}
 										};
-									}
+										}
 									if $bpp >= BitsPerPixel::Two {
 										write_bit!(0x01, 0x00);
 										write_bit!(0x02, 0x01);
-									}
+										}
 									if $bpp >= BitsPerPixel::Four {
 										write_bit!(0x04, 0x10);
 										write_bit!(0x08, 0x11);
-									}
+										}
 									if $bpp >= BitsPerPixel::Eight {
 										write_bit!(0x10, 0x20);
 										write_bit!(0x20, 0x21);
 										write_bit!(0x40, 0x30);
 										write_bit!(0x80, 0x31);
+										}
 									}
 								}
-							}
 						};
 					}
 					encode_tile!(0, 0, 0);

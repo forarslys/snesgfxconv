@@ -1,5 +1,4 @@
 pub mod image;
-pub mod snes;
 
 use std::io::Write;
 
@@ -8,14 +7,55 @@ fn main() {
 		.version(clap::crate_version!())
 		.author("forarslys")
 		.about("PNG to SNES graphics convertor")
-		.arg(clap::Arg::with_name("input").help("input PNG file").required(true))
-		.arg(clap::Arg::with_name("output").help("output binary file").long("output").short("o").takes_value(true))
-		.arg(clap::Arg::with_name("palette").help("output palette file").long("palette").short("p").takes_value(true))
-		.arg(clap::Arg::with_name("tilemap").help("output tilemap file").long("tilemap").short("t").takes_value(true))
-		.arg(clap::Arg::with_name("dedup").help("Removes duplicate tiles").long("dedup"))
-		.arg(clap::Arg::with_name("2bpp").help("Converts to 2bpp").long("2bpp").short("2"))
-		.arg(clap::Arg::with_name("4bpp").help("Converts to 4bpp").long("4bpp").short("4"))
-		.arg(clap::Arg::with_name("8bpp").help("Converts to 8bpp").long("8bpp").short("8"))
+		.arg(
+			clap::Arg::with_name("input")
+				.help("input PNG file")
+				.required(true),
+		)
+		.arg(
+			clap::Arg::with_name("output")
+				.help("output binary file")
+				.long("output")
+				.short("o")
+				.takes_value(true),
+		)
+		.arg(
+			clap::Arg::with_name("palette")
+				.help("output palette file")
+				.long("palette")
+				.short("p")
+				.takes_value(true),
+		)
+		.arg(
+			clap::Arg::with_name("tilemap")
+				.help("output tilemap file")
+				.long("tilemap")
+				.short("t")
+				.takes_value(true),
+		)
+		.arg(
+			clap::Arg::with_name("dedup")
+				.help("Removes duplicate tiles")
+				.long("dedup"),
+		)
+		.arg(
+			clap::Arg::with_name("2bpp")
+				.help("Converts to 2bpp")
+				.long("2bpp")
+				.short("2"),
+		)
+		.arg(
+			clap::Arg::with_name("4bpp")
+				.help("Converts to 4bpp")
+				.long("4bpp")
+				.short("4"),
+		)
+		.arg(
+			clap::Arg::with_name("8bpp")
+				.help("Converts to 8bpp")
+				.long("8bpp")
+				.short("8"),
+		)
 		.group(clap::ArgGroup::with_name("bpp").args(&["2bpp", "4bpp", "8bpp"]))
 		.get_matches();
 
@@ -37,19 +77,35 @@ fn main() {
 	};
 	let dedup = matches.is_present("dedup");
 
-	let image = image::Image::open_png(&input).expect("Could not read a PNG file.");
+	let image = match image::Image::open_png(&input) {
+		Ok(image) => image,
+		Err(msg) => {
+			eprintln!("{}", msg);
+			std::process::exit(1);
+		}
+	};
 
 	if let Some(palette) = matches.value_of("palette") {
 		let mut file = std::fs::File::create(&palette).unwrap();
 		let plte = image.get_palettes();
-		unsafe {
-			let slice = std::slice::from_raw_parts(plte.as_ptr() as *const u8, plte.len() * std::mem::size_of::<snes::gfx::SNESColor>());
-			file.write_all(&slice).unwrap();
-		}
+		let bin = bincode::serialize(plte).unwrap();
+		assert_eq!(
+			bin[0..8].iter().rev().fold(0u64, |r, &i| r << 8 | i as u64) as usize
+				* std::mem::size_of::<sneslib::graphics::color::SNESColor>(),
+			bin[8..].len()
+		);
+		file.write_all(&bin[8..]).unwrap();
 	}
 
 	let encoded = if output.is_some() || tilemap_path.is_some() {
-		Some(image.convert_to(bpp, dedup, tilemap_path.is_some()).expect("Failed in encoding the image."))
+		match image.convert_to(bpp, dedup, tilemap_path.is_some()) {
+			Ok(enc) => Some(enc),
+			Err(msg) => {
+				eprintln!("{}", msg);
+				eprintln!("Failed in encoding the image.");
+				std::process::exit(1);
+			}
+		}
 	} else {
 		None
 	};
@@ -67,7 +123,11 @@ fn main() {
 				let mut file = std::fs::File::create(&tilemap_path).unwrap();
 				file.write_all(tilemap.as_slice()).unwrap();
 			}
-			Some((_, Some(Err(msg)))) => eprintln!("{}", msg),
+			Some((_, Some(Err(msg)))) => {
+				eprintln!("{}", msg);
+				eprintln!("Failed in exporting a tilemap file.");
+				std::process::exit(1);
+			}
 			_ => (),
 		}
 	}
