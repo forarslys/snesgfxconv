@@ -78,7 +78,13 @@ fn main() {
 	};
 	let dedup = matches.is_present("dedup");
 
-	let image = image::Image::open_png(&input).expect("Could not read a PNG file.");
+	let image = match image::Image::open_png(&input) {
+		Ok(image) => image,
+		Err(msg) => {
+			eprintln!("{}", msg);
+			std::process::exit(1);
+		}
+	};
 
 	if let Some(palette) = matches.value_of("palette") {
 		let mut file = std::fs::File::create(&palette).unwrap();
@@ -93,11 +99,14 @@ fn main() {
 	}
 
 	let encoded = if output.is_some() || tilemap_path.is_some() {
-		Some(
-			image
-				.convert_to(bpp, dedup, tilemap_path.is_some())
-				.expect("Failed in encoding the image."),
-		)
+		match image.convert_to(bpp, dedup, tilemap_path.is_some()) {
+			Ok(enc) => Some(enc),
+			Err(msg) => {
+				eprintln!("{}", msg);
+				eprintln!("Failed in encoding the image.");
+				std::process::exit(1);
+			}
+		}
 	} else {
 		None
 	};
@@ -115,7 +124,11 @@ fn main() {
 				let mut file = std::fs::File::create(&tilemap_path).unwrap();
 				file.write_all(tilemap.as_slice()).unwrap();
 			}
-			Some((_, Some(Err(msg)))) => eprintln!("{}", msg),
+			Some((_, Some(Err(msg)))) => {
+				eprintln!("{}", msg);
+				eprintln!("Failed in exporting a tilemap file.");
+				std::process::exit(1);
+			}
 			_ => (),
 		}
 	}

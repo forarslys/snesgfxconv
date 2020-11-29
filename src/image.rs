@@ -17,10 +17,12 @@ pub struct Image {
 
 impl Image {
 	pub fn open_png<P: AsRef<std::path::Path>>(path: P) -> Result<Self, &'static str> {
-		let file = std::fs::File::open(path).expect("Could not open a file.");
+		let file = std::fs::File::open(path).map_err(|_| "Could not open the input file.")?;
 		let mut decoder = png::Decoder::new(file);
 		decoder.set_transformations(png::Transformations::IDENTITY | png::Transformations::PACKING);
-		let (info, mut reader) = decoder.read_info().expect("Could not decode the file.");
+		let (info, mut reader) = decoder
+			.read_info()
+			.map_err(|_| "Could not decode the input file.")?;
 
 		if info.color_type != png::ColorType::Indexed {
 			return Err("Color type of the PNG file must be Indexed Color.");
