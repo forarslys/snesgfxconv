@@ -1,6 +1,2 @@
 edition = "2018"
-fn_args_layout = "Compressed"
-format_macro_bodies = false
 hard_tabs = true
-use_small_heuristics = "Max"
-max_width = 180

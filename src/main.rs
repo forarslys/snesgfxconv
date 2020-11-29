@@ -8,14 +8,55 @@ fn main() {
 		.version(clap::crate_version!())
 		.author("forarslys")
 		.about("PNG to SNES graphics convertor")
-		.arg(clap::Arg::with_name("input").help("input PNG file").required(true))
-		.arg(clap::Arg::with_name("output").help("output binary file").long("output").short("o").takes_value(true))
-		.arg(clap::Arg::with_name("palette").help("output palette file").long("palette").short("p").takes_value(true))
-		.arg(clap::Arg::with_name("tilemap").help("output tilemap file").long("tilemap").short("t").takes_value(true))
-		.arg(clap::Arg::with_name("dedup").help("Removes duplicate tiles").long("dedup"))
-		.arg(clap::Arg::with_name("2bpp").help("Converts to 2bpp").long("2bpp").short("2"))
-		.arg(clap::Arg::with_name("4bpp").help("Converts to 4bpp").long("4bpp").short("4"))
-		.arg(clap::Arg::with_name("8bpp").help("Converts to 8bpp").long("8bpp").short("8"))
+		.arg(
+			clap::Arg::with_name("input")
+				.help("input PNG file")
+				.required(true),
+		)
+		.arg(
+			clap::Arg::with_name("output")
+				.help("output binary file")
+				.long("output")
+				.short("o")
+				.takes_value(true),
+		)
+		.arg(
+			clap::Arg::with_name("palette")
+				.help("output palette file")
+				.long("palette")
+				.short("p")
+				.takes_value(true),
+		)
+		.arg(
+			clap::Arg::with_name("tilemap")
+				.help("output tilemap file")
+				.long("tilemap")
+				.short("t")
+				.takes_value(true),
+		)
+		.arg(
+			clap::Arg::with_name("dedup")
+				.help("Removes duplicate tiles")
+				.long("dedup"),
+		)
+		.arg(
+			clap::Arg::with_name("2bpp")
+				.help("Converts to 2bpp")
+				.long("2bpp")
+				.short("2"),
+		)
+		.arg(
+			clap::Arg::with_name("4bpp")
+				.help("Converts to 4bpp")
+				.long("4bpp")
+				.short("4"),
+		)
+		.arg(
+			clap::Arg::with_name("8bpp")
+				.help("Converts to 8bpp")
+				.long("8bpp")
+				.short("8"),
+		)
 		.group(clap::ArgGroup::with_name("bpp").args(&["2bpp", "4bpp", "8bpp"]))
 		.get_matches();
 
@@ -43,13 +84,20 @@ fn main() {
 		let mut file = std::fs::File::create(&palette).unwrap();
 		let plte = image.get_palettes();
 		unsafe {
-			let slice = std::slice::from_raw_parts(plte.as_ptr() as *const u8, plte.len() * std::mem::size_of::<snes::gfx::SNESColor>());
+			let slice = std::slice::from_raw_parts(
+				plte.as_ptr() as *const u8,
+				plte.len() * std::mem::size_of::<snes::gfx::SNESColor>(),
+			);
 			file.write_all(&slice).unwrap();
 		}
 	}
 
 	let encoded = if output.is_some() || tilemap_path.is_some() {
-		Some(image.convert_to(bpp, dedup, tilemap_path.is_some()).expect("Failed in encoding the image."))
+		Some(
+			image
+				.convert_to(bpp, dedup, tilemap_path.is_some())
+				.expect("Failed in encoding the image."),
+		)
 	} else {
 		None
 	};
