@@ -1,4 +1,4 @@
-use super::snes::gfx;
+use sneslib::graphics::color;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BitsPerPixel {
@@ -9,7 +9,7 @@ pub enum BitsPerPixel {
 
 pub struct Image {
 	buffer: Vec<u8>,
-	plte: Vec<gfx::SNESColor>,
+	plte: Vec<color::SNESColor>,
 	width: u32,
 	height: u32,
 	bpp: BitsPerPixel,
@@ -39,7 +39,7 @@ impl Image {
 		let mut plte = vec![];
 		let palette = image_info.palette.as_ref().unwrap();
 		for i in (0..palette.len()).step_by(3) {
-			plte.push(gfx::Color(palette[i], palette[i + 1], palette[i + 2]).into());
+			plte.push(color::RGB(palette[i], palette[i + 1], palette[i + 2]).into());
 		}
 
 		let bpp = Self::analyze_bpp(&buffer, info.width as usize, info.height as usize);
@@ -107,7 +107,7 @@ impl Image {
 		}
 	}
 
-	pub fn get_palettes(&self) -> &Vec<gfx::SNESColor> {
+	pub fn get_palettes(&self) -> &Vec<color::SNESColor> {
 		&self.plte
 	}
 }

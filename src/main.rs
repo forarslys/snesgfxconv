@@ -1,5 +1,4 @@
 pub mod image;
-pub mod snes;
 
 use std::io::Write;
 
@@ -89,13 +88,13 @@ fn main() {
 	if let Some(palette) = matches.value_of("palette") {
 		let mut file = std::fs::File::create(&palette).unwrap();
 		let plte = image.get_palettes();
-		unsafe {
-			let slice = std::slice::from_raw_parts(
-				plte.as_ptr() as *const u8,
-				plte.len() * std::mem::size_of::<snes::gfx::SNESColor>(),
-			);
-			file.write_all(&slice).unwrap();
-		}
+		let bin = bincode::serialize(plte).unwrap();
+		assert_eq!(
+			bin[0..8].iter().rev().fold(0u64, |r, &i| r << 8 | i as u64) as usize
+				* std::mem::size_of::<sneslib::graphics::color::SNESColor>(),
+			bin[8..].len()
+		);
+		file.write_all(&bin[8..]).unwrap();
 	}
 
 	let encoded = if output.is_some() || tilemap_path.is_some() {
